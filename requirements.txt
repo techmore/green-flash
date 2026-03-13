@@ -1,0 +1,5 @@
+Flask==2.3.3
+rumps==0.4.0
+py2app==0.28.10
+requests==2.31.0
+charset-normalizer==2.0.0

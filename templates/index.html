@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UGreen File Manager</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .location-toggle { display: flex; gap: 10px; }
+        .btn { padding: 8px 16px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .btn:hover { background-color: #0056b3; }
+        .btn.secondary { background-color: #6c757d; }
+        .btn.secondary:hover { background-color: #545b62; }
+        .btn.warning { background-color: #ffc107; color: #212529; }
+        .btn.warning:hover { background-color: #e0a800; }
+        .btn.info { background-color: #17a2b8; color: white; }
+        .btn.info:hover { background-color: #138496; }
+        .table-container { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; }
+        tr:hover { background-color: #f1f1f1; }
+        .size { text-align: right; }
+        .type { text-transform: capitalize; }
+        .path { font-family: monospace; font-size: 0.9em; color: #666; }
+        .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .path-info { margin: 10px 0; padding: 10px; background-color: #e9ecef; border-radius: 4px; }
+        .breadcrumb { display: flex; flex-wrap: wrap; gap: 5px; }
+        .breadcrumb a { color: #007bff; text-decoration: none; }
+        .breadcrumb a:hover { text-decoration: underline; }
+        .breadcrumb span { color: #666; }
+        .nas-status { padding: 5px 10px; background-color: #28a745; color: white; border-radius: 4px; font-size: 0.9em; }
+        .nas-status.discovering { background-color: #ffc107; color: #212529; }
+        .nas-status.none { background-color: #dc3545; }
+        #nasDevicesList { margin-top: 10px; padding: 10px; background-color: white; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .nas-device { padding: 8px; border-bottom: 1px solid #eee; }
+        .nas-device:last-child { border-bottom: none; }
+        .nas-device-name { font-weight: bold; }
+        .nas-device-ip { font-family: monospace; color: #666; }
+        .nas-device-type { font-size: 0.9em; color: #888; }
+        .tree-view { margin-top: 20px; }
+        .tree-node { padding: 4px 8px; cursor: pointer; }
+        .tree-node:hover { background-color: #f8f9fa; }
+        .tree-node.folder { font-weight: bold; }
+        .tree-node.file { font-size: 0.9em; }
+        .tree-node.media-type { text-transform: capitalize; font-size: 0.8em; opacity: 0.7; }
+        .tree-indent { display: inline-block; width: 20px; }
+        .toggle-btn { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; margin-right: 5px; font-size: 12px; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
+        .modal-content { background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 500px; border-radius: 8px; }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; }
+        .close:hover, .close:focus { color: black; text-decoration: none; cursor: pointer; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .form-group button { margin-top: 10px; }
+        #resultsContainer { margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 4px; }
+        .result-item { padding: 10px; border-bottom: 1px solid #eee; }
+        .result-item:last-child { border-bottom: none; }
+        .result-size { font-family: monospace; }
+        .result-path { font-family: monospace; font-size: 0.9em; color: #666; }
+        .result-type { text-transform: capitalize; font-size: 0.9em; opacity: 0.8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>UGreen File Manager</h1>
+            <div class="location-toggle">
+                <button class="btn" id="localBtn">Local</button>
+                <button class="btn" id="nasBtn">NAS</button>
+            </div>
+            <div id="nasStatus" class="nas-status none">No NAS discovered</div>
+            <div id="diskUsage" style="margin-left: 15px; font-size: 0.9em; color: #555;"></div>
+            <button class="btn btn-sm info" id="settingsBtn">Settings</button>
+        </div>
+        
+        <div class="path-info">
+            Current location: <span id="currentPath">/</span>
+        </div>
+        
+        <div class="breadcrumb" id="breadcrumb">
+            <!-- Breadcrumbs will be inserted here -->
+        </div>
+        
+        <!-- NAS Devices List -->
+        <div id="nasDevicesList">
+            <h3>Discovered NAS Devices</h3>
+            <div id="nasDevicesContainer">
+                <!-- NAS devices will be inserted here -->
+            </div>
+        </div>
+        
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th class="size">Size</th>
+                        <th>Type</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="fileTableBody">
+                    <!-- Rows will be inserted here -->
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Tree View (initially hidden) -->
+        <div id="treeViewContainer" class="tree-view" style="display: none;">
+            <h3>Filesystem Tree View</h3>
+            <button id="toggleTreeView" class="btn btn-sm secondary">← Back to File List</button>
+            <div id="treeView">
+                <!-- Tree will be inserted here -->
+            </div>
+        </div>
+        
+        <!-- Modals -->
+        <div id="plexRenameModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Plex-compliant Renaming</h2>
+                <div id="plexRenameResult"></div>
+                <form id="plexRenameForm">
+                    <div class="form-group">
+                        <label for="plexMediaType">Media Type:</label>
+                        <select id="plexMediaType">
+                            <option value="movie">Movie</option>
+                            <option value="tv">TV Show</option>
+                            <option value="book">Book</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="plexNewName">New Name (optional):</label>
+                        <input type="text" id="plexNewName" placeholder="Leave blank for automatic naming">
+                    </div>
+                    <button type="submit" class="btn">Apply Plex Naming</button>
+                    <button type="button" class="btn secondary" id="cancelPlexRename">Cancel</button>
+                </form>
+            </div>
+        </div>
+        
+        <div id="transcodeModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Transcode Media File</h2>
+                <div id="transcodeResult"></div>
+                <form id="transcodeForm">
+                    <div class="form-group">
+                        <label for="transcodeFormat">Target Format:</label>
+                        <select id="transcodeFormat">
+                            <option value="mp4">MP4 (H.264)</option>
+                            <option value="mkv">MKV</option>
+                            <option value="avi">AVI</option>
+                            <option value="mov">MOV</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="transcodeQuality">Quality:</label>
+                        <select id="transcodeQuality">
+                            <option value="high">High Quality</option>
+                            <option value="medium">Medium Quality</option>
+                            <option value="low">Low Quality (Small Size)</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn">Start Transcoding</button>
+                    <button type="button" class="btn secondary" id="cancelTranscode">Cancel</button>
+                </form>
+            </div>
+        </div>
+        
+        <div id="largeFileScanModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Scan for Large Files</h2>
+                <div id="largeFileScanResult"></div>
+                <form id="largeFileScanForm">
+                    <div class="form-group">
+                        <label for="minSize">Minimum File Size:</label>
+                        <input type="number" id="minSize" value="100" min="1">
+                        <select id="minSizeUnit">
+                            <option value="mb">MB</option>
+                            <option value="gb">GB</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn">Scan for Large Files</button>
+                    <button type="button" class="btn secondary" id="cancelLargeFileScan">Cancel</button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Settings Modal -->
+        <div id="settingsModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Settings</h2>
+                <div id="settingsResult"></div>
+                <form id="settingsForm">
+                    <div class="form-group">
+                        <label for="settingsLocalRoot">LOCAL_ROOT (local file root):</label>
+                        <input type="text" id="settingsLocalRoot" placeholder="e.g., /Users/yourname/Media" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label for="settingsNasRoot">NAS_ROOT (NAS file root):</label>
+                        <input type="text" id="settingsNasRoot" placeholder="e.g., /Volumes/NAS" readonly>
+                    </div>
+                    <div class="form-group">
+                        <small>To change these values, set the environment variables LOCAL_ROOT and NAS_ROOT before starting the Flask server, then restart the app.</small>
+                    </div>
+                    <button type="button" class="btn" id="closeSettings">Close</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentLocation = 'local';
+        let currentPath = '';
+        let discoveredNAS = [];
+        let selectedNAS = null;
+        let selectedFileForAction = null; // File selected for rename/transcode/etc.
+
+        function updateLocationDisplay() {
+            document.getElementById('localBtn').classList.toggle('active', currentLocation === 'local');
+            document.getElementById('nasBtn').classList.toggle('active', currentLocation === 'nas');
+        }
+
+        async function loadDirectory(location = currentLocation, path = currentPath) {
+            try {
+                let url = `/api/browse?location=${location}&path=${encodeURIComponent(path)}`;
+                
+                // If we're browsing a specific NAS share
+                if (location === 'nas' && selectedNAS) {
+                    url += `&nas_ip=${encodeURIComponent(selectedNAS.ip)}`;
+                }
+                
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Failed to load directory');
+                
+                const data = await response.json();
+                currentLocation = location;
+                currentPath = path || '';
+                
+                document.getElementById('currentPath').textContent = currentPath || '/';
+                updateBreadcrumb();
+                renderTable(data.items);
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error loading directory: ' + error.message);
+            }
+        }
+
+        async function loadNASDevices() {
+            try {
+                const response = await fetch('/api/nas/discover');
+                if (!response.ok) throw new Error('Failed to discover NAS devices');
+                
+                const data = await response.json();
+                discoveredNAS = data.devices;
+                renderNASDevices();
+                updateNASStatus();
+            } catch (error) {
+                console.error('Error discovering NAS:', error);
+                updateNASStatus('error');
+            }
+        }
+
+        function updateNASStatus(status = 'discovering') {
+            const statusEl = document.getElementById('nasStatus');
+            if (status === 'discovering') {
+                statusEl.textContent = 'Discovering NAS...';
+                statusEl.className = 'nas-status discovering';
+            } else if (status === 'none') {
+                statusEl.textContent = 'No NAS discovered';
+                statusEl.className = 'nas-status none';
+            } else if (status === 'found') {
+                statusEl.textContent = `${discoveredNAS.length} NAS device${discoveredNAS.length !== 1 ? 's' : ''} found`;
+                statusEl.className = 'nas-status';
+            } else if (status === 'error') {
+                statusEl.textContent = 'Error discovering NAS';
+                statusEl.className = 'nas-status none';
+            }
+        }
+
+        function renderNASDevices() {
+            const container = document.getElementById('nasDevicesContainer');
+            container.innerHTML = '';
+            
+            if (discoveredNAS.length === 0) {
+                container.innerHTML = '<p>No NAS devices discovered yet.</p>';
+                return;
+            }
+            
+            discoveredNAS.forEach(device => {
+                const deviceEl = document.createElement('div');
+                deviceEl.className = 'nas-device';
+                // Determine if likely a UGreen NAS based on hostname
+                const isUGreen = (device.hostname || '').toLowerCase().includes('nas') || 
+                                 (device.hostname || '').toLowerCase().includes('ugreen') ||
+                                 (device.hostname || '').toLowerCase().includes('ue');
+                const badge = isUGreen ? '<span style="background:#28a745;color:white;padding:2px 6px;border-radius:3px;font-size:0.8em;margin-left:8px;">UGreen NAS</span>' : '';
+                deviceEl.innerHTML = `
+                    <div class="nas-device-name">${device.hostname || 'Unknown'}${badge}</div>
+                    <div class="nas-device-ip">${device.ip}</div>
+                    <div class="nas-device-type">${device.type || 'NAS Device'}</div>
+                `;
+                deviceEl.onclick = () => selectNAS(device);
+                container.appendChild(deviceEl);
+            });
+        }
+
+        function selectNAS(device) {
+            selectedNAS = device;
+            document.getElementById('nasBtn').textContent = `NAS: ${device.hostname || device.ip}`;
+            loadDirectory('nas', '');
+        }
+
+        function updateBreadcrumb() {
+            const breadcrumb = document.getElementById('breadcrumb');
+            breadcrumb.innerHTML = '';
+            
+            if (currentPath) {
+                const parts = currentPath.split('/').filter(part => part !== '');
+                let accumulated = '';
+                
+                // Home link
+                const homeLink = document.createElement('a');
+                homeLink.href = '#';
+                homeLink.textContent = 'Home';
+                homeLink.onclick = (e) => {
+                    e.preventDefault();
+                    loadDirectory(currentLocation, '');
+                };
+                breadcrumb.appendChild(homeLink);
+                breadcrumb.appendChild(document.createTextNode(' / '));
+                
+                parts.forEach((part, index) => {
+                    accumulated += (accumulated ? '/' : '') + part;
+                    const link = document.createElement('a');
+                    link.href = '#';
+                    link.textContent = part;
+                    link.onclick = (e) => {
+                        e.preventDefault();
+                        loadDirectory(currentLocation, accumulated);
+                    };
+                    breadcrumb.appendChild(link);
+                    
+                    if (index < parts.length - 1) {
+                        breadcrumb.appendChild(document.createTextNode(' / '));
+                    }
+                });
+            } else {
+                breadcrumb.textContent = 'Home';
+            }
+        }
+
+        function renderTable(items) {
+            const tbody = document.getElementById('fileTableBody');
+            tbody.innerHTML = '';
+            
+            items.forEach(item => {
+                const tr = document.createElement('tr');
+                
+                // Name
+                const nameTd = document.createElement('td');
+                nameTd.textContent = item.name;
+                tr.appendChild(nameTd);
+                
+                // Size
+                const sizeTd = document.createElement('td');
+                sizeTd.className = 'size';
+                if (item.is_dir) {
+                    sizeTd.textContent = '-';
+                } else {
+                    sizeTd.textContent = formatFileSize(item.size);
+                }
+                tr.appendChild(sizeTd);
+                
+                // Type
+                const typeTd = document.createElement('td');
+                typeTd.className = 'type';
+                if (item.is_dir) {
+                    typeTd.textContent = 'Folder';
+                } else {
+                    typeTd.textContent = item.media_type ? item.media_type.charAt(0).toUpperCase() + item.media_type.slice(1) : 'File';
+                }
+                tr.appendChild(typeTd);
+                
+                // Actions
+                const actionsTd = document.createElement('td');
+                actionsTd.className = 'actions';
+                
+                if (!item.is_dir) {
+                    const renameBtn = document.createElement('button');
+                    renameBtn.className = 'btn btn-sm';
+                    renameBtn.textContent = 'Rename (Plex)';
+                    renameBtn.onclick = () => {
+                        selectFileForAction = item;
+                        openPlexRenameModal(item);
+                    };
+                    actionsTd.appendChild(renameBtn);
+                    
+                    const transcodeBtn = document.createElement('button');
+                    transcodeBtn.className = 'btn btn-sm secondary';
+                    transcodeBtn.textContent = 'Transcode';
+                    transcodeBtn.onclick = () => {
+                        selectFileForAction = item;
+                        openTranscodeModal(item);
+                    };
+                    actionsTd.appendChild(transcodeBtn);
+                    
+                    // Add large file scanner button for directories
+                    if (item.is_dir) {
+                        const scanBtn = document.createElement('button');
+                        scanBtn.className = 'btn btn-sm info';
+                        scanBtn.textContent = 'Scan Large Files';
+                        scanBtn.onclick = () => {
+                            openLargeFileScanModal(item.path);
+                        };
+                        actionsTd.appendChild(scanBtn);
+                    }
+                } else {
+                    // For directories, maybe add a sync button later
+                    const syncBtn = document.createElement('button');
+                    syncBtn.className = 'btn btn-sm secondary';
+                    syncBtn.textContent = 'Sync to NAS';
+                    syncBtn.onclick = () => {
+                        // Placeholder for sync functionality
+                        alert('Sync functionality not implemented yet');
+                    };
+                    actionsTd.appendChild(syncBtn);
+                }
+                
+                tr.appendChild(actionsTd);
+                tbody.appendChild(tr);
+            });
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            let i = 0;
+            let num = bytes;
+            while (num >= k && i < sizes.length - 1) {
+                num /= k;
+                i++;
+            }
+            return `${num.toFixed(1)} ${sizes[i]}`;
+        }
+
+        // Modal functions
+        function openPlexRenameModal(fileItem) {
+            const modal = document.getElementById('plexRenameModal');
+            const resultDiv = document.getElementById('plexRenameResult');
+            const form = document.getElementById('plexRenameForm');
+            
+            // Reset form
+            resultDiv.innerHTML = `<p>Selected file: <strong>${fileItem.name}</strong></p>`;
+            document.getElementById('plexMediaType').value = fileItem.media_type || 'movie';
+            document.getElementById('plexNewName').value = '';
+            
+            modal.style.display = 'block';
+        }
+
+        function openTranscodeModal(fileItem) {
+            const modal = document.getElementById('transcodeModal');
+            const resultDiv = document.getElementById('transcodeResult');
+            const form = document.getElementById('transcodeForm');
+            
+            // Reset form
+            resultDiv.innerHTML = `<p>Selected file: <strong>${fileItem.name}</strong></p>`;
+            document.getElementById('transcodeFormat').value = 'mp4';
+            document.getElementById('transcodeQuality').value = 'medium';
+            
+            modal.style.display = 'block';
+        }
+
+        function openLargeFileScanModal(dirPath) {
+            const modal = document.getElementById('largeFileScanModal');
+            const resultDiv = document.getElementById('largeFileScanResult');
+            const form = document.getElementById('largeFileScanForm');
+            
+            // Reset form
+            resultDiv.innerHTML = `<p>Selected directory: <strong>${dirPath || '/'}</strong></p>`;
+            document.getElementById('minSize').value = '100';
+            document.getElementById('minSizeUnit').value = 'mb';
+            
+            modal.style.display = 'block';
+        }
+
+        function openSettingsModal() {
+            const modal = document.getElementById('settingsModal');
+            const resultDiv = document.getElementById('settingsResult');
+            const form = document.getElementById('settingsForm');
+            
+            // Load current config from server
+            fetch('/api/config')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('settingsLocalRoot').value = data.LOCAL_ROOT || '';
+                    document.getElementById('settingsNasRoot').value = data.NAS_ROOT || '';
+                    resultDiv.innerHTML = `<p>Settings loaded from server. To change these values, set the environment variables LOCAL_ROOT and NAS_ROOT before starting the Flask server, then restart the app.</p>`;
+                })
+                .catch(error => {
+                    console.error('Error loading config:', error);
+                    resultDiv.innerHTML = `<p>Error loading settings. See console for details.</p>`;
+                });
+            
+            modal.style.display = 'block';
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        // Event listeners for modals
+        document.querySelectorAll('.close').forEach(closeBtn => {
+            closeBtn.onclick = () => {
+                const modal = closeBtn.closest('.modal');
+                modal.style.display = 'none';
+            };
+        });
+
+        // Settings button
+        document.getElementById('settingsBtn').onclick = () => {
+            openSettingsModal();
+        };
+
+        window.onclick = (event) => {
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = 'none';
+            }
+        };
+
+        // Form submissions
+        document.getElementById('plexRenameForm').onsubmit = (e) => {
+            e.preventDefault();
+            applyPlexRename();
+        };
+
+        document.getElementById('transcodeForm').onsubmit = (e) => {
+            e.preventDefault();
+            startTranscode();
+        };
+
+        document.getElementById('largeFileScanForm').onsubmit = (e) => {
+            e.preventDefault();
+            scanLargeFiles();
+        };
+
+        document.getElementById('cancelPlexRename').onclick = () => closeModal('plexRenameModal');
+        document.getElementById('cancelTranscode').onclick = () => closeModal('transcodeModal');
+        document.getElementById('cancelLargeFileScan').onclick = () => closeModal('largeFileScanModal');
+        document.getElementById('closeSettings').onclick = () => closeModal('settingsModal');
+
+        function applyPlexRename() {
+            if (!selectedFileForAction) return;
+            
+            const mediaType = document.getElementById('plexMediaType').value;
+            const customName = document.getElementById('plexNewName').value.trim();
+            
+            const requestData = {
+                file_path: selectedFileForAction.path,
+                media_type: mediaType,
+                location: currentLocation
+            };
+            
+            // If custom name provided, we'd need to modify the backend to accept it
+            // For now, we'll just use the automatic naming
+            
+            fetch('/api/plex/rename', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                const resultDiv = document.getElementById('plexRenameResult');
+                if (data.error) {
+                    resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            <p><strong>Original:</strong> ${data.original_name}</p>
+                            <p><strong>New name:</strong> ${data.new_name}</p>
+                            <p>${data.message}</p>
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('plexRenameResult').innerHTML = 
+                    `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            });
+        }
+
+        function startTranscode() {
+            if (!selectedFileForAction) return;
+            
+            const format = document.getElementById('transcodeFormat').value;
+            const quality = document.getElementById('transcodeQuality').value;
+            
+            const requestData = {
+                file_path: selectedFileForAction.path,
+                location: currentLocation,
+                format: format
+                // Quality parameter would be sent to backend in real implementation
+            };
+            
+            fetch('/api/transcode', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                const resultDiv = document.getElementById('transcodeResult');
+                if (data.error) {
+                    resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-info">
+                            <p><strong>File:</strong> ${data.original_name}</p>
+                            <p><strong>Target format:</strong> ${data.target_format}</p>
+                            <p>${data.message}</p>
+                            ${data.warning ? `<p><small>${data.warning}</small></p>` : ''}
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('transcodeResult').innerHTML = 
+                    `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            });
+        }
+
+        function scanLargeFiles() {
+            const minSize = parseInt(document.getElementById('minSize').value);
+            const minSizeUnit = document.getElementById('minSizeUnit').value;
+            
+            let sizeInBytes = minSize;
+            if (minSizeUnit === 'gb') {
+                sizeInBytes *= 1024 * 1024 * 1024;
+            } else if (minSizeUnit === 'mb') {
+                sizeInBytes *= 1024 * 1024;
+            }
+            
+            // We're scanning the current directory
+            const path = currentPath;
+            
+            fetch(`/api/scan/large-files?location=${currentLocation}&path=${encodeURIComponent(path)}&min_size=${sizeInBytes}`)
+            .then(response => response.json())
+            .then(data => {
+                const resultDiv = document.getElementById('largeFileScanResult');
+                if (data.error) {
+                    resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+                } else {
+                    if (data.count === 0) {
+                        resultDiv.innerHTML = `
+                            <div class="alert alert-info">
+                                <p>No files larger than ${data.min_size_formatted} found in ${data.scan_path}</p>
+                            </div>
+                        `;
+                    } else {
+                        let filesHTML = `<h4>Found ${data.count} files larger than ${data.min_size_formatted}:</h4>`;
+                        data.large_files.forEach(file => {
+                            filesHTML += `
+                                <div class="result-item">
+                                    <div><strong>${file.name}</strong></div>
+                                    <div class="result-size">${file.size_formatted}</div>
+                                    <div class="result-path">${file.path}</div>
+                                    <div class="result-type">${file.media_type}</div>
+                                </div>
+                            `;
+                        });
+                        resultDiv.innerHTML = filesHTML;
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('largeFileScanResult').innerHTML = 
+                    `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            });
+        }
+
+        function updateDiskUsage() {
+            fetch('/api/diskusage')
+                .then(response => response.json())
+                .then(data => {
+                    const usageDiv = document.getElementById('diskUsage');
+                    let html = '';
+                    if (data.LOCAL && !data.LOCAL.error) {
+                        html += `<strong>Local:</strong> ${data.LOCAL.used_str} / ${data.LOCAL.total_str} (${data.LOCAL.percent_used}%) `;
+                    } else if (data.LOCAL && data.LOCAL.error) {
+                        html += `<strong>Local:</strong> Error - ${data.LOCAL.error} `;
+                    }
+                    if (data.NAS && !data.NAS.error) {
+                        html += `<strong>NAS:</strong> ${data.NAS.used_str} / ${data.NAS.total_str} (${data.NAS.percent_used}%)`;
+                    } else if (data.NAS && data.NAS.error) {
+                        html += `<strong>NAS:</strong> Error - ${data.NAS.error}`;
+                    }
+                    usageDiv.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error fetching disk usage:', error);
+                    document.getElementById('diskUsage').innerHTML = '<span style="color:red;">Error loading disk usage</span>';
+                });
+        }
+
+        function loadTreeView(location = currentLocation, path = currentPath) {
+            // Show loading indicator
+            const treeView = document.getElementById('treeView');
+            treeView.innerHTML = '<p>Loading tree...</p>';
+            
+            let url = `/api/tree?location=${location}&path=${encodeURIComponent(path)}`;
+            // If we're browsing a specific NAS share
+            if (location === 'nas' && selectedNAS) {
+                url += `&nas_ip=${encodeURIComponent(selectedNAS.ip)}`;
+            }
+            
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) throw new Error('Failed to load tree');
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        treeView.innerHTML = `<p style="color:red;">Error: ${data.error}</p>`;
+                        return;
+                    }
+                    treeView.innerHTML = ''; // clear loading
+                    renderTree(data.items, 0, location, path); // render with indent level 0
+                })
+                .catch(error => {
+                    console.error('Error loading tree:', error);
+                    treeView.innerHTML = `<p style="color:red;">Error loading tree: ${error.message}</p>`;
+                });
+        }
+
+        function renderTree(items, indentLevel, location, currentPath) {
+            const treeView = document.getElementById('treeView');
+            items.forEach(item => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'tree-node';
+                if (item.is_dir) {
+                    itemDiv.classList.add('folder');
+                } else {
+                    itemDiv.classList.add('file');
+                    if (item.media_type) {
+                        const typeSpan = document.createElement('span');
+                        typeSpan.className = 'tree-node media-type';
+                        typeSpan.textContent = item.media_type;
+                        itemDiv.appendChild(typeSpan);
+                    }
+                }
+                
+                // Indentation
+                const indent = document.createElement('span');
+                indent.className = 'tree-indent';
+                indent.style.width = (indentLevel * 20) + 'px';
+                itemDiv.appendChild(indent);
+                
+                // Toggle button for folders
+                if (item.is_dir) {
+                    const toggleBtn = document.createElement('span');
+                    toggleBtn.className = 'toggle-btn';
+                    toggleBtn.textContent = '▸';
+                    toggleBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        // Toggle children visibility
+                        const childrenContainer = itemDiv.querySelector('.tree-children');
+                        if (childrenContainer) {
+                            if (childrenContainer.style.display === 'none') {
+                                childrenContainer.style.display = 'block';
+                                toggleBtn.textContent = '▾';
+                            } else {
+                                childrenContainer.style.display = 'none';
+                                toggleBtn.textContent = '▸';
+                            }
+                        } else {
+                            // Load children on demand
+                            const childPath = item.path;
+                            toggleBtn.textContent = '▾';
+                            const childrenContainer = document.createElement('div');
+                            childrenContainer.className = 'tree-children';
+                            itemDiv.appendChild(childrenContainer);
+                            // Fetch children
+                            fetch(`/api/tree?location=${location}&path=${encodeURIComponent(childPath)}`)
+                                .then(resp => {
+                                    if (!resp.ok) throw new Error('Failed to load children');
+                                    return resp.json();
+                                })
+                                .then(childData => {
+                                    if (childData.error) {
+                                        childrenContainer.innerHTML = `<p style="color:red;">Error: ${childData.error}</p>`;
+                                        return;
+                                    }
+                                    renderTree(childData.items, indentLevel + 1, location, childPath);
+                                })
+                                .catch(err => {
+                                    console.error('Error loading children:', err);
+                                    childrenContainer.innerHTML = `<p style="color:red;">Error loading children</p>`;
+                                });
+                        }
+                    };
+                    itemDiv.appendChild(toggleBtn);
+                }
+                
+                // Name
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = item.name;
+                itemDiv.appendChild(nameSpan);
+                
+                // Size (for files)
+                if (!item.is_dir) {
+                    const sizeSpan = document.createElement('span');
+                    sizeSpan.className = 'result-size';
+                    sizeSpan.style.marginLeft = '10px';
+                    sizeSpan.textContent = formatFileSize(item.size);
+                    itemDiv.appendChild(sizeSpan);
+                }
+                
+                treeView.appendChild(itemDiv);
+            });
+        }
+
+        // Event listeners
+        document.getElementById('localBtn').addEventListener('click', () => {
+            if (currentLocation !== 'local') {
+                currentLocation = 'local';
+                selectedNAS = null;
+                document.getElementById('nasBtn').textContent = 'NAS';
+                loadDirectory();
+            }
+        });
+        
+        document.getElementById('nasBtn').addEventListener('click', () => {
+            if (currentLocation !== 'nas') {
+                currentLocation = 'nas';
+                loadDirectory();
+            }
+        });
+
+        // Tree view toggle
+        document.getElementById('toggleTreeView').addEventListener('click', () => {
+            const treeContainer = document.getElementById('treeViewContainer');
+            const tableContainer = document.querySelector('.table-container');
+            if (treeContainer.style.display === 'none' || treeContainer.style.display === '') {
+                // Show tree view
+                loadTreeView(currentLocation, currentPath);
+                treeContainer.style.display = 'block';
+                tableContainer.style.display = 'none';
+                document.getElementById('toggleTreeView').textContent = '← Back to File List';
+            } else {
+                // Show table view
+                treeContainer.style.display = 'none';
+                tableContainer.style.display = 'block';
+                document.getElementById('toggleTreeView').textContent = '→ Tree View';
+            }
+        });
+
+        // Periodic NAS discovery updates
+        setInterval(loadNASDevices, 10000); // Update every 10 seconds
+        
+        // Initial loads
+        loadNASDevices();
+        loadDirectory();
+        updateDiskUsage();
+        // Update disk usage every 30 seconds
+        setInterval(updateDiskUsage, 30000);
+    </script>
+</body>
+</html>
